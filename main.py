@@ -6,11 +6,12 @@ import uvicorn
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from src.utils.logger import logger
+from src.banks import add_bank
 from src.accounts import add_account
 from src.categories import add_category
 from src.transactions import add_transaction
 from src.utils.db_utils import delete
+from src.utils.logger import logger
 
 app = FastAPI()
 
@@ -20,8 +21,14 @@ class StrictBaseModel(BaseModel):
         extra = "forbid"
 
 
+class BankRequest(StrictBaseModel):
+    name: str = Field(..., description="Name of the bank")
+    country: str = Field(..., description="Country where the bank is located")
+
+
 class AccountRequest(StrictBaseModel):
     name: str = Field(..., description="Name of the account")
+    bank: str = Field(..., description="Bank associated with the account")
     account_type: str = Field(
         Literal["savings", "credit-card", "investment"],
         description="Type of the account (e.g., savings, checking)"
@@ -47,6 +54,26 @@ class DeleteRequest(StrictBaseModel):
         description="Table to delete from"
     )
     id: int = Field(..., description="ID to delete")
+
+
+@app.post("/add-bank")
+async def add_bank_api(payload: BankRequest) -> Dict[str, str]:
+    """
+    API endpoint to add a bank.
+
+    Args:
+        payload (Dict[str, str]): The bank details.
+
+    Returns:
+        dict: A confirmation message indicating success.
+    """
+    try:
+        response = await add_bank(payload.model_dump())
+        return response
+    except Exception as e:
+        # Log the error if needed
+        logger.error(f"[ERROR ADDING BANK]: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.post("/add-account")

@@ -4,26 +4,6 @@ from typing import Dict, Any
 
 from src.utils.logger import logger
 
-def validate_category(category: str) -> bool:
-    """
-    Validate if the category in the payload exists in the categories CSV.
-    Args:
-        payload (Dict[str, Any]):
-            A dictionary containing transaction details.
-
-    Returns:
-        (Bool):
-            True if the category exists, otherwise raises a ValueError.
-    """
-    if not os.path.exists(os.path.join("data", "categories.csv")):
-        raise ValueError("There are no categories available. Please add a category first.")
-
-    df = pd.read_csv(os.path.join("data", "categories.csv"))
-    if category not in df["name"].values:
-        raise ValueError(f"Category '{category}' does not exist. Please add it first.")
-
-    return True
-
 
 async def add_category(payload: Dict[str, Any]) -> Dict[str, str]:
     """
@@ -44,7 +24,7 @@ async def add_category(payload: Dict[str, Any]) -> Dict[str, str]:
         if not df_original.empty:
             # Check for duplicate category names
             if payload["name"] in df_original["name"].values:
-                raise ValueError(f"Category '{payload['category']}' already exists.")
+                raise ValueError(f"Category '{payload['name']}' already exists.")
 
             df["id"] = int(df_original["id"].max()) + 1
             df = pd.concat([df_original, df], ignore_index=True)

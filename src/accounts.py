@@ -3,6 +3,7 @@ import pandas as pd
 from typing import Dict, Any
 
 from src.utils.logger import logger
+from src.utils.db_utils import validate_value
 
 async def add_account(payload: Dict[str, Any]) -> Dict[str, str]:
     """
@@ -16,6 +17,8 @@ async def add_account(payload: Dict[str, Any]) -> Dict[str, str]:
         (Dict[str, str]):
             A confirmation message indicating success.
     """
+    validate_value("banks", payload["bank"])
+
     df = pd.DataFrame([payload])
     df["id"] = 1
 
