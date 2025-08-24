@@ -17,14 +17,23 @@ async def add_transaction(payload: Dict[str, Any]) -> Dict[str, str]:
         (Dict[str, str]):
             A confirmation message indicating success.
     """
-    validate_category(payload)
+    validate_category(payload["category"])
 
-    df_new_transaction = pd.DataFrame([payload])
+    df = pd.DataFrame([payload])
+    df["id"] = 1
+
     if os.path.exists(os.path.join("data", "transactions.csv")):
-        df = pd.read_csv(os.path.join("data", "transactions.csv"))
-        df = pd.concat([df, df_new_transaction], ignore_index=True)
-    else:
-        df = df_new_transaction
+        df_original = pd.read_csv(os.path.join("data", "transactions.csv"))
+
+        if not df_original.empty:
+            df["id"] = int(df_original["id"].max()) + 1
+            df = pd.concat([df_original, df], ignore_index=True)
+
+    # Ensure 'id' is the first column
+    cols = df.columns.tolist()
+    if "id" in cols:
+        cols.insert(0, cols.pop(cols.index("id")))
+        df = df[cols]
 
     df.to_csv(os.path.join("data", "transactions.csv"), index=False)
     logger.info("Transaction added successfully.    ")
