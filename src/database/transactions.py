@@ -2,7 +2,7 @@ import os
 import pandas as pd
 from typing import Dict, Any
 
-from src.accounts import update_account_balance
+from src.database.accounts import update_account_balance
 from src.utils.logger import logger
 from src.utils.db_utils import validate_value
 

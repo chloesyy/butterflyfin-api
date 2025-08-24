@@ -1,17 +1,16 @@
-import logging
-from colorlog import ColoredFormatter
-from typing import Dict, Literal
+from typing import Dict, Literal, Any
 
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from src.banks import add_bank
-from src.accounts import add_account
-from src.categories import add_category
-from src.transactions import add_transaction
-from src.utils.db_utils import delete
+from src.database.banks import add_bank
+from src.database.accounts import add_account
+from src.database.categories import add_category
+from src.database.common import delete
+from src.database.transactions import add_transaction
 from src.utils.logger import logger
+from src.views.networth import calculate_net_worth
 
 app = FastAPI()
 
@@ -30,7 +29,7 @@ class AccountRequest(StrictBaseModel):
     name: str = Field(..., description="Name of the account")
     bank: str = Field(..., description="Bank associated with the account")
     account_type: str = Field(
-        Literal["savings", "credit-card", "investment"],
+        Literal["Savings", "Credit Card", "Investment"],
         description="Type of the account (e.g., savings, checking)"
     )
     initial_balance: float = Field(..., description="Initial balance of the account")
@@ -43,7 +42,7 @@ class CategoryRequest(StrictBaseModel):
 class TransactionRequest(StrictBaseModel):
     name: str = Field(..., description="Name of the transaction")
     transaction_type: str = Field(
-        Literal["income", "expense"],
+        Literal["Income", "Expense"],
         description="Type of the transaction (e.g., income, expense)"
     )
     amount: float = Field(..., description="Transaction amount")
@@ -58,6 +57,23 @@ class DeleteRequest(StrictBaseModel):
         description="Table to delete from"
     )
     id: int = Field(..., description="ID to delete")
+
+
+@app.get("/networth")
+async def networth_api() -> Dict[str, Any]:
+    """
+    API endpoint to get the net worth.
+
+    Returns:
+        dict: A dictionary containing the net worth.
+    """
+    try:
+        output = await calculate_net_worth()
+        return output
+    except Exception as e:
+        # Log the error if needed
+        logger.error(f"[ERROR CALCULATING NET WORTH]: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.post("/add-bank")
