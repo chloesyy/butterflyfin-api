@@ -33,7 +33,7 @@ class AccountRequest(StrictBaseModel):
         Literal["savings", "credit-card", "investment"],
         description="Type of the account (e.g., savings, checking)"
     )
-    balance: float = Field(..., description="Initial balance of the account")
+    initial_balance: float = Field(..., description="Initial balance of the account")
 
 
 class CategoryRequest(StrictBaseModel):
@@ -42,6 +42,10 @@ class CategoryRequest(StrictBaseModel):
 
 class TransactionRequest(StrictBaseModel):
     name: str = Field(..., description="Name of the transaction")
+    transaction_type: str = Field(
+        Literal["income", "expense"],
+        description="Type of the transaction (e.g., income, expense)"
+    )
     amount: float = Field(..., description="Transaction amount")
     date: str = Field(..., description="Transaction date in YYYY-MM-DD format")
     category: str = Field(..., description="Transaction category")
@@ -152,7 +156,7 @@ async def delete_api(payload: DeleteRequest) -> Dict[str, str]:
         return response
     except Exception as e:
         # Log the error if needed
-        logger.error(f"[ERROR DELETING TRANSACTION]: {e}")
+        logger.error(f"[ERROR DELETING VALUE]: {e}")
         raise HTTPException(status_code=400, detail=str(e))
 
 
