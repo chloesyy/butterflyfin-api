@@ -3,7 +3,7 @@ import pandas as pd
 from typing import Dict, Any
 
 from src.utils.logger import logger
-from src.utils.db_utils import validate_value
+from src.utils.db_utils import validate_value, ensure_id_first_column
 
 async def add_account(payload: Dict[str, Any]) -> Dict[str, str]:
     """
@@ -17,6 +17,8 @@ async def add_account(payload: Dict[str, Any]) -> Dict[str, str]:
         (Dict[str, str]):
             A confirmation message indicating success.
     """
+    payload.pop("entity")
+
     validate_value("banks", payload["bank"])
 
     df = pd.DataFrame([payload])
@@ -34,11 +36,7 @@ async def add_account(payload: Dict[str, Any]) -> Dict[str, str]:
             df["id"] = int(df_original["id"].max()) + 1
             df = pd.concat([df_original, df], ignore_index=True)
 
-    # Ensure 'id' is the first column
-    cols = df.columns.tolist()
-    if "id" in cols:
-        cols.insert(0, cols.pop(cols.index("id")))
-        df = df[cols]
+    df = ensure_id_first_column(df)
 
     df.to_csv(os.path.join("data", "accounts.csv"), index=False)
     logger.info("Account added successfully.")

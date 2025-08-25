@@ -3,6 +3,7 @@ import pandas as pd
 from typing import Dict, Any
 
 from src.utils.logger import logger
+from src.utils.db_utils import ensure_id_first_column
 
 
 async def add_bank(payload: Dict[str, Any]) -> Dict[str, str]:
@@ -17,6 +18,8 @@ async def add_bank(payload: Dict[str, Any]) -> Dict[str, str]:
         (Dict[str, str]):
             A confirmation message indicating success.
     """
+    payload.pop("entity")
+
     df = pd.DataFrame([payload])
     df["id"] = 1
 
@@ -31,11 +34,7 @@ async def add_bank(payload: Dict[str, Any]) -> Dict[str, str]:
             df["id"] = int(df_original["id"].max()) + 1
             df = pd.concat([df_original, df], ignore_index=True)
 
-    # Ensure 'id' is the first column
-    cols = df.columns.tolist()
-    if "id" in cols:
-        cols.insert(0, cols.pop(cols.index("id")))
-        df = df[cols]
+    df = ensure_id_first_column(df)
 
     df.to_csv(os.path.join("data", "banks.csv"), index=False)
     logger.info("Bank added successfully.")
