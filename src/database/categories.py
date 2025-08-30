@@ -16,7 +16,7 @@ async def add_category(payload: Dict[str, Any]) -> Dict[str, str]:
     Returns:
         dict: A confirmation message indicating success.
     """
-    payload.pop("entity")
+    payload.pop("task")
 
     df = pd.DataFrame([payload])
     df["id"] = 1
@@ -35,5 +35,33 @@ async def add_category(payload: Dict[str, Any]) -> Dict[str, str]:
     df = ensure_id_first_column(df)
 
     df.to_csv(os.path.join("data", "categories.csv"), index=False)
-    logger.info("Category added successfully.")
-    return {"message": "Category added successfully!"}
+    logger.info("[CATEGORY] Category added successfully.")
+    return {"added_category": df.iloc[-1].to_dict()}
+
+
+async def delete_category(payload: Dict[str, Any]) -> Dict[str, str]:
+    """
+    Delete a transaction from the DataFrame and update the CSV file.
+
+    Args:
+        payload (Dict[str, Any]):
+            A dictionary containing transaction details.
+
+    Returns:
+        (Dict[str, str]):
+            A confirmation message indicating success.
+    """
+    if not os.path.exists(os.path.join("data", "categories.csv")):
+        raise ValueError("No categories available to delete.")
+
+    df = pd.read_csv(os.path.join("data", "categories.csv"))
+    if payload["id"] not in df["id"].values:
+        raise ValueError(f"ID '{payload['id']}' does not exist in the category database.")
+
+    to_delete = df[df["id"] == payload["id"]]
+    df = df[df["id"] != payload["id"]]
+
+    df.to_csv(os.path.join("data", "categories.csv"), index=False)
+    logger.info(f"[CATEGORY] Deleted\n\n{to_delete.to_string(index=False)}\n")
+    return {"deleted_category": to_delete.iloc[0].to_dict()}
+

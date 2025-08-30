@@ -17,7 +17,7 @@ async def add_account(payload: Dict[str, Any]) -> Dict[str, str]:
         (Dict[str, str]):
             A confirmation message indicating success.
     """
-    payload.pop("entity")
+    payload.pop("task")
 
     validate_value("banks", payload["bank"])
 
@@ -39,8 +39,35 @@ async def add_account(payload: Dict[str, Any]) -> Dict[str, str]:
     df = ensure_id_first_column(df)
 
     df.to_csv(os.path.join("data", "accounts.csv"), index=False)
-    logger.info("Account added successfully.")
-    return {"message": "Account added successfully!"}
+    logger.info("[ACCOUNT] Account added successfully.")
+    return {"added_account": df.iloc[-1].to_dict()}
+
+
+async def delete_account(payload: Dict[str, Any]) -> Dict[str, str]:
+    """
+    Delete a transaction from the DataFrame and update the CSV file.
+
+    Args:
+        payload (Dict[str, Any]):
+            A dictionary containing transaction details.
+
+    Returns:
+        (Dict[str, str]):
+            A confirmation message indicating success.
+    """
+    if not os.path.exists(os.path.join("data", "accounts.csv")):
+        raise ValueError("No accounts available to delete.")
+
+    df = pd.read_csv(os.path.join("data", "accounts.csv"))
+    if payload["id"] not in df["id"].values:
+        raise ValueError(f"ID '{payload['id']}' does not exist in the account database.")
+
+    to_delete = df[df["id"] == payload["id"]]
+    df = df[df["id"] != payload["id"]]
+
+    df.to_csv(os.path.join("data", "accounts.csv"), index=False)
+    logger.info(f"[ACCOUNT] Deleted\n\n{to_delete.to_string(index=False)}\n")
+    return {"deleted_account": to_delete.iloc[0].to_dict()}
 
 
 async def update_account_balance(account_name: str, amount: float) -> None:
@@ -70,3 +97,5 @@ async def update_account_balance(account_name: str, amount: float) -> None:
 
     df.to_csv(os.path.join("data", "accounts.csv"), index=False)
     logger.info(f"Updated balance for account '{account_name}' to {new_balance}.")
+
+    return new_balance
