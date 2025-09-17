@@ -4,3 +4,6 @@ requests
 pydantic
 pandas
 colorlog
+sqlalchemy
+psycopg2-binary
+python-dotenv

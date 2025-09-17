@@ -1,250 +1,144 @@
-from typing import Dict, Literal, Any, Annotated, Union, Optional
+from typing import Annotated, Literal
 
-import uvicorn
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
+import uvicorn
 
-from src.database.banks import add_bank, delete_bank
-from src.database.accounts import add_account, delete_account
-from src.database.categories import add_category, delete_category
-from src.database.transactions import (
-    add_recurring_transaction,
-    add_transaction,
-    create_recurring_template,
-    delete_transaction
-)
+from src import models
+from src.database import SessionLocal, engine
 from src.utils.logger import logger
-from src.views.networth import calculate_net_worth
 
 app = FastAPI()
+# models.Base.metadata.drop_all(bind=engine)
+models.Base.metadata.create_all(bind=engine)
 
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+db_dependency = Annotated[Session, Depends(get_db)]
 
 class StrictBaseModel(BaseModel):
     class Config:
         extra = "forbid"
 
-
 class AccountAddRequest(StrictBaseModel):
-    task: Literal["add"]
     name: str = Field(..., description="Name of the account")
-    bank: str = Field(..., description="Bank associated with the account")
+    bank_id: int = Field(..., description="Bank associated with the account")
     account_type: Literal["Savings", "Credit Card", "Investment"] = Field(
         ...,
         description="Type of the account (e.g., savings, checking)"
     )
     initial_balance: float = Field(..., description="Initial balance of the account")
 
-
 class BankAddRequest(StrictBaseModel):
-    task: Literal["add"]
     name: str = Field(..., description="Name of the bank")
     country: str = Field(..., description="Country where the bank is located")
 
-
 class CategoryAddRequest(StrictBaseModel):
-    task: Literal["add"]
     name: str = Field(..., description="Name of the category")
-
+    budget: float = Field(0, description="Budget for the category")
+    balance: float = Field(0, description="Current balance of the category")
 
 class TransactionAddRequest(StrictBaseModel):
-    task: Literal["add"]
     name: str = Field(..., description="Name of the transaction")
-    transaction_type: Literal["Income", "Expense"] = Field(
-        ...,
-        description="Type of the transaction (e.g., Income, Expense)"
-    )
     amount: float = Field(..., description="Transaction amount")
     date: str = Field(..., description="Transaction date in YYYY-MM-DD format")
-    category: str = Field(..., description="Transaction category")
-    account: str = Field(..., description="Account associated with the transaction")
+    category_id: int = Field(..., description="Transaction category ID")
+    account_id: int = Field(..., description="Account ID associated with the transaction")
 
 
-class TransactionCreateRecurringRequest(StrictBaseModel):
-    task: Literal["create_recurring_template"]
-    name: str = Field(..., description="Name of the recurring transaction")
-    transaction_type: Literal["Income", "Expense"] = Field(
-        ...,
-        description="Type of the transaction (e.g., Income, Expense)"
+@app.post("/categories/add", response_model=CategoryAddRequest)
+def add_category(request: CategoryAddRequest, db: db_dependency):
+    db_category = models.Categories(
+        name=request.name, 
+        budget=request.budget, 
+        balance=request.balance
     )
-    amount: float = Field(..., description="Transaction amount")
-    start_date: Optional[str] = Field(None, description="Start date in YYYY-MM-DD format")
-    end_date: Optional[str] = Field(None, description="End date in YYYY-MM-DD format")
-    frequency: Literal["Daily", "Weekly", "Monthly", "Yearly"] = Field(
-        None,
-        description="Frequency of the recurring transaction"
+    db.add(db_category)
+    db.commit()
+    db.refresh(db_category)
+    return db_category
+
+@app.post("/categories/{category_id}/delete")
+def delete_category(category_id: int, db: db_dependency):
+    db_category = db.query(models.Categories).filter(models.Categories.id == category_id).first()
+    if not db_category:
+        raise HTTPException(status_code=404, detail="Category not found")
+    db.delete(db_category)
+    db.commit()
+    return {"detail": "Category deleted"}
+
+@app.post("/accounts/add", response_model=AccountAddRequest)
+def add_account(request: AccountAddRequest, db: db_dependency):
+    db_account = models.Accounts(
+        name=request.name,
+        bank_id=request.bank_id,
+        account_type=request.account_type,
+        initial_balance=request.initial_balance,
+        balance=request.initial_balance
     )
-    category: str = Field(..., description="Transaction category")
-    account: Optional[str] = Field(None, description="Account associated with the transaction")
+    db.add(db_account)
+    db.commit()
+    db.refresh(db_account)
+    return db_account
 
+@app.post("/accounts/{account_id}/delete")
+def delete_account(account_id: int, db: db_dependency):
+    db_account = db.query(models.Accounts).filter(models.Accounts.id == account_id).first()
+    if not db_account:
+        raise HTTPException(status_code=404, detail="Account not found")
+    db.delete(db_account)
+    db.commit()
+    return {"detail": "Account deleted"}
 
-class TransactionAddRecurringRequest(StrictBaseModel):
-    task: Literal["add_recurring"]
-    recurring_transaction_id: int = Field(
-        ..., description="ID of the recurring transaction to add"
+@app.post("/banks/add", response_model=BankAddRequest)
+def add_bank(request: BankAddRequest, db: db_dependency):
+    db_bank = models.Banks(
+        name=request.name,
+        country=request.country,
+        balance=0
     )
-    date: str = Field(..., description="Date to add transactions for in YYYY-MM-DD format")
-    amount: Optional[float] = Field(None, description="Optional amount to override")
-    account: Optional[str] = Field(None, description="Optional account to override")
+    db.add(db_bank)
+    db.commit()
+    db.refresh(db_bank)
+    return db_bank
 
+@app.post("/banks/{bank_id}/delete")
+def delete_bank(bank_id: int, db: db_dependency):
+    db_bank = db.query(models.Banks).filter(models.Banks.id == bank_id).first()
+    if not db_bank:
+        raise HTTPException(status_code=404, detail="Bank not found")
+    db.delete(db_bank)
+    db.commit()
+    return {"detail": "Bank deleted"}
 
-class DeleteRequest(StrictBaseModel):
-    task: Literal["delete"]
-    id: int = Field(..., description="ID to delete")
+@app.post("/transactions/add", response_model=TransactionAddRequest)
+def add_transaction(request: TransactionAddRequest, db: db_dependency):
+    db_transaction = models.Transactions(
+        name=request.name,
+        amount=request.amount,
+        date=request.date,
+        category_id=request.category_id,
+        account_id=request.account_id
+    )
+    db.add(db_transaction)
+    db.commit()
+    db.refresh(db_transaction)
+    return db_transaction
 
-
-AccountRequest = Annotated[
-    Union[AccountAddRequest, DeleteRequest],
-    Field(discriminator="task")
-]
-
-
-BankRequest = Annotated[
-    Union[BankAddRequest, DeleteRequest],
-    Field(discriminator="task")
-]
-
-
-CategoryRequest = Annotated[
-    Union[CategoryAddRequest, DeleteRequest],
-    Field(discriminator="task")
-]
-
-
-TransactionRequest = Annotated[
-    Union[
-        TransactionAddRequest,
-        DeleteRequest,
-        TransactionCreateRecurringRequest,
-        TransactionAddRecurringRequest
-    ],
-    Field(discriminator="task")
-]
-
-
-#########################################################
-##################### GET ENDPOINTS #####################
-#########################################################
-
-
-@app.get("/networth")
-async def networth_api() -> Dict[str, Any]:
-    """
-    API endpoint to get the net worth.
-
-    Returns:
-        dict: A dictionary containing the net worth.
-    """
-    try:
-        output = await calculate_net_worth()
-        return output
-    except Exception as e:
-        logger.error(f"[NET WORTH]: {e}")
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-#########################################################
-##################### GET ENDPOINTS #####################
-#########################################################
-
-@app.post("/account")
-async def account_api(payload: AccountRequest) -> Dict[str, Any]:
-    """
-    API endpoint to add an account.
-
-    Args:
-        payload (AccountRequest): The account details.
-
-    Returns:
-        dict: A confirmation message indicating success.
-    """
-    try:
-        if payload.task == "add":
-            response = await add_account(payload.model_dump())
-        elif payload.task == "delete":
-            response = await delete_account(payload.model_dump())
-        else:
-            raise ValueError(f"Invalid task: {payload.task}")
-        return response
-    except Exception as e:
-        logger.error(f"[ACCOUNT]: {e}")
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.post("/bank")
-async def bank_api(payload: BankRequest) -> Dict[str, Any]:
-    """
-    API endpoint to add a bank.
-
-    Args:
-        payload (BankRequest): The bank details.
-
-    Returns:
-        dict: A confirmation message indicating success.
-    """
-    try:
-        if payload.task == "add":
-            response = await add_bank(payload.model_dump())
-        elif payload.task == "delete":
-            response = await delete_bank(payload.model_dump())
-        else:
-            raise ValueError(f"Invalid task: {payload.task}")
-        return response
-    except Exception as e:
-        logger.error(f"[BANK]: {e}")
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.post("/category")
-async def category_api(payload: CategoryRequest) -> Dict[str, Any]:
-    """
-    API endpoint to add a category.
-
-    Args:
-        payload (CategoryRequest): The category details.
-
-    Returns:
-        dict: A confirmation message indicating success.
-    """
-    try:
-        if payload.task == "add":
-            response = await add_category(payload.model_dump())
-        elif payload.task == "delete":
-            response = await delete_category(payload.model_dump())  # Uncomment when delete function is implemented
-        else:
-            raise ValueError(f"Invalid task: {payload.task}")
-        return response
-    except Exception as e:
-        logger.error(f"[CATEGORY]: {e}")
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.post("/transaction")
-async def transaction_api(payload: TransactionRequest) -> Dict[str, Any]:
-    """
-    API endpoint to add a transaction.
-
-    Args:
-        payload (TransactionRequest): The transaction details.
-
-    Returns:
-        dict: A confirmation message indicating success.
-    """
-    try:
-        if payload.task == "add":
-            response = await add_transaction(payload.model_dump())
-        elif payload.task == "delete":
-            response = await delete_transaction(payload.model_dump())
-        elif payload.task == "create_recurring_template":
-            response = await create_recurring_template(payload.model_dump())
-        elif payload.task == "add_recurring":
-            response = await add_recurring_transaction(payload.model_dump())
-        else:
-            raise ValueError(f"Invalid task: {payload.task}")
-        return response
-    except Exception as e:
-        logger.error(f"[TRANSACTION]: {e}")
-        raise HTTPException(status_code=400, detail=str(e))
-
+@app.post("/transactions/{transaction_id}/delete")
+def delete_transaction(transaction_id: int, db: db_dependency):
+    db_transaction = db.query(models.Transactions).filter(models.Transactions.id == transaction_id).first()
+    if not db_transaction:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    db.delete(db_transaction)
+    db.commit()
+    return {"detail": "Transaction deleted"}
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="localhost", port=8000, reload=True)
